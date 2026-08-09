@@ -8,3 +8,5 @@ cargo-sources.json
 Cargo.lock
 
 /.vscode/
+**/.DS_Store
+.idea/
