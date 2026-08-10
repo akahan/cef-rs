@@ -3212,11 +3212,11 @@ fn make_my_struct() -> {rust_name} {{
                         }
                     }
 
-                    impl From<#rust_name> for #name_ident  {
-                        fn from(value: #rust_name) -> Self {
-                            self.0
-                        }
+                impl From<#rust_name> for #name_ident  {
+                    fn from(value: #rust_name) -> Self {
+                        value.0
                     }
+                }
 
                     impl AsRef<#name_ident> for #rust_name {
                         fn as_ref(&self) -> &#name_ident {
