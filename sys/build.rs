@@ -10,6 +10,7 @@ fn main() -> anyhow::Result<()> {
 
     println!("cargo::rerun-if-env-changed=FLATPAK");
     println!("cargo::rerun-if-env-changed=CEF_PATH");
+    println!("cargo::rerun-if-env-changed=CEF_SKIP_VERSION_CHECK");
     let cef_path_env = env::var("FLATPAK")
         .map(|_| String::from("/usr/lib"))
         .or_else(|_| env::var("CEF_PATH"));
@@ -18,7 +19,11 @@ fn main() -> anyhow::Result<()> {
         Ok(cef_path) => {
             // Allow overriding the CEF path with environment variables.
             println!("Using CEF path from environment: {cef_path}");
-            download_cef::check_archive_json(&env::var("CARGO_PKG_VERSION")?, &cef_path)?;
+            if env::var_os("CEF_SKIP_VERSION_CHECK").is_some() {
+                println!("Skipping CEF archive version check");
+            } else {
+                download_cef::check_archive_json(&env::var("CARGO_PKG_VERSION")?, &cef_path)?;
+            }
             PathBuf::from(cef_path)
         }
         Err(_) => {
