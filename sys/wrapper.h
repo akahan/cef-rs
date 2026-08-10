@@ -6,14 +6,13 @@
 #include "include/cef_sandbox_mac.h"
 #endif
 
-#if defined(__has_include)
-#if __has_include("include/cef_api_hash.h")
-#include "include/cef_api_hash.h"
-#endif
-#else
-#include "include/cef_api_hash.h"
-#endif
 #include "include/cef_version.h"
+
+// CEF 3.x (including branch 2704) defines API hashes in cef_version.h and
+// does not provide the newer cef_api_hash.h header.
+#if CEF_VERSION_MAJOR != 3
+#include "include/cef_api_hash.h"
+#endif
 
 #include "include/capi/cef_base_capi.h"
 
