@@ -68,9 +68,17 @@ impl Rc for cef_base_ref_counted_t {
     }
 
     fn has_at_least_one_ref(&self) -> bool {
-        if let Some(has_at_least_one_ref) = self.has_at_least_one_ref {
-            let result = unsafe { has_at_least_one_ref(ptr::from_ref(self) as *mut _) };
-            return result == 1;
+        #[cfg(cef_legacy)]
+        {
+            return self.has_one_ref();
+        }
+
+        #[cfg(not(cef_legacy))]
+        {
+            if let Some(has_at_least_one_ref) = self.has_at_least_one_ref {
+                let result = unsafe { has_at_least_one_ref(ptr::from_ref(self) as *mut _) };
+                return result == 1;
+            }
         }
 
         false
@@ -326,7 +334,10 @@ impl<T, I> RcImpl<T, I> {
         base.size = std::mem::size_of::<T>();
         base.add_ref = Some(add_ref::<T, I>);
         base.has_one_ref = Some(has_one_ref::<T, I>);
-        base.has_at_least_one_ref = Some(has_at_least_one_ref::<T, I>);
+        #[cfg(not(cef_legacy))]
+        {
+            base.has_at_least_one_ref = Some(has_at_least_one_ref::<T, I>);
+        }
         base.release = Some(release::<T, I>);
 
         Box::into_raw(Box::new(RcImpl {

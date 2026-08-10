@@ -432,7 +432,7 @@ impl SignatureRef<'_> {
                 let ty_tokens = arg_ty.to_token_stream();
                 let ty_string = ty_tokens.to_string();
                 let entry = tree.cef_name_map.get(&ty_string);
-                (tree.root(&ty_string) == BASE_REF_COUNTED)
+                tree.is_ref_counted_root(&ty_string)
                     .then(|| {
                         match modifiers {
                             [TypeModifier::MutPtr, TypeModifier::MutPtr] => {
@@ -451,7 +451,7 @@ impl SignatureRef<'_> {
                                 })
                             }
                             _ => {
-                                if ty_string.as_str() == BASE_REF_COUNTED {
+                                if tree.is_ref_counted_root(&ty_string) {
                                     Some(quote!{
                                         let #out_name = #arg_name;
                                         let #arg_name = #out_name.map(|arg| {
@@ -593,7 +593,7 @@ impl SignatureRef<'_> {
                 let arg_name = format_ident!("arg_{slice_name}");
                 let out_name = format_ident!("out_{slice_name}");
                 let vec_name = format_ident!("vec_{slice_name}");
-                let add_refs = if tree.root(&slice_ty.to_token_stream().to_string()) == BASE_REF_COUNTED {
+                let add_refs = if tree.is_ref_counted_root(&slice_ty.to_token_stream().to_string()) {
                     Some(quote! { elem.add_ref(); })
                 } else {
                     None
@@ -734,7 +734,7 @@ impl SignatureRef<'_> {
                 let ty_tokens = arg_ty.to_token_stream();
                 let ty_string = ty_tokens.to_string();
                 match modifiers {
-                    [TypeModifier::MutPtr, TypeModifier::MutPtr] if tree.root(&ty_string) == BASE_REF_COUNTED => {
+                    [TypeModifier::MutPtr, TypeModifier::MutPtr] if tree.is_ref_counted_root(&ty_string) => {
                         let arg_name = format_ident!("arg_{name}");
                         let out_name = format_ident!("out_{name}");
                         Some(quote! {
@@ -829,7 +829,7 @@ impl SignatureRef<'_> {
                 let entry = tree.cef_name_map.get(ty_string.as_str());
                 let root = tree.root(&ty_string);
 
-                (root == BASE_REF_COUNTED)
+                tree.is_ref_counted_root(root)
                     .then(|| {
                         match entry? {
                             NameMapEntry {
@@ -958,7 +958,7 @@ impl SignatureRef<'_> {
                 let ty_string = ty_tokens.to_string();
                 let entry = tree.cef_name_map.get(ty_string.as_str());
 
-                (tree.root(&ty_string) == BASE_REF_COUNTED)
+                tree.is_ref_counted_root(&ty_string)
                     .then(|| {
                         match entry? {
                             NameMapEntry {
@@ -1102,7 +1102,7 @@ impl SignatureRef<'_> {
                 let ty_tokens = arg_ty.to_token_stream();
                 let ty_string = ty_tokens.to_string();
                 match modifiers {
-                    [TypeModifier::MutPtr, TypeModifier::MutPtr] if tree.root(&ty_string) == BASE_REF_COUNTED => {
+                    [TypeModifier::MutPtr, TypeModifier::MutPtr] if tree.is_ref_counted_root(&ty_string) => {
                         let out_name = format_ident!("out_{name}");
                         let wrap_name = format_ident!("wrap_{name}");
                         Some(quote! {
@@ -1138,7 +1138,7 @@ impl SignatureRef<'_> {
                     _ => None,
                 };
                 let add_refs = match (slice_modifiers.as_slice(), tree.root(&slice_ty.to_token_stream().to_string())) {
-                    ([TypeModifier::MutSlice], BASE_REF_COUNTED) => {
+                    ([TypeModifier::MutSlice], root) if tree.is_ref_counted_root(root) => {
                         Some(quote! {
                             for elem in &mut #vec_name[..size] {
                                 if let Some(elem) = elem.as_ref() {
@@ -1310,6 +1310,8 @@ impl<'a> TryFrom<&'a syn::Field> for SignatureRef<'a> {
 
 const BASE_REF_COUNTED: &str = "_cef_base_ref_counted_t";
 
+const LEGACY_BASE_REF_COUNTED: &str = "_cef_base_t";
+
 const BASE_SCOPED: &str = "_cef_base_scoped_t";
 
 const CUSTOM_STRING_TYPES: &[&str] = &[
@@ -1380,7 +1382,7 @@ impl ModifiedType {
             }) => {
                 let is_sealed = *is_sealed;
                 let root = tree.root(&elem_string);
-                if BASE_REF_COUNTED == root && root != elem_string.as_str() {
+                if tree.is_ref_counted_root(root) && root != elem_string.as_str() {
                     let impl_trait = format_ident!("Impl{name}");
                     let name = format_ident!("{name}");
 
@@ -1644,9 +1646,30 @@ struct ParseTree<'a> {
     lookup_global_function_declaration: BTreeMap<String, usize>,
 
     base_types: BTreeMap<String, String>,
+
+    legacy_base_ref_counted: bool,
 }
 
 impl ParseTree<'_> {
+    fn is_ref_counted_root(&self, name: &str) -> bool {
+        let root = self.root(name);
+        root == BASE_REF_COUNTED
+            || (self.legacy_base_ref_counted && root == LEGACY_BASE_REF_COUNTED)
+    }
+
+    fn is_ref_counted_name(&self, name: &str) -> bool {
+        name == BASE_REF_COUNTED
+            || (self.legacy_base_ref_counted && name == LEGACY_BASE_REF_COUNTED)
+    }
+
+    fn ref_counted_base_name(&self) -> &str {
+        if self.legacy_base_ref_counted {
+            LEGACY_BASE_REF_COUNTED
+        } else {
+            BASE_REF_COUNTED
+        }
+    }
+
     pub fn write_prelude(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let header = quote! {
             #![allow(
@@ -1914,7 +1937,7 @@ impl ParseTree<'_> {
         let base_name = self.base(name);
         let impl_trait = format_ident!("Impl{rust_name}");
         let impl_base_name = base_name
-            .filter(|base| *base != BASE_REF_COUNTED)
+            .filter(|base| !self.is_ref_counted_name(base))
             .and_then(|base| self.cef_name_map.get(base))
             .map(|entry| {
                 let base = &entry.name;
@@ -2008,7 +2031,7 @@ impl ParseTree<'_> {
             .into_iter()
             .rev();
 
-        let base_ident = format_ident!("{BASE_REF_COUNTED}");
+        let base_ident = format_ident!("{}", self.ref_counted_base_name());
 
         let wrapper = quote! {
             #[derive(Clone)]
@@ -2081,7 +2104,7 @@ impl ParseTree<'_> {
         name_ident: &syn::Ident,
         rust_name: &syn::Ident,
     ) -> fmt::Result {
-        if BASE_REF_COUNTED == s.name {
+        if self.is_ref_counted_name(&s.name) {
             let wrapper = quote! {
                 #[derive(Clone)]
                 pub struct #rust_name(RefGuard<#name_ident>);
@@ -2218,7 +2241,7 @@ impl ParseTree<'_> {
         let wrap_type_macro = make_wrap_type_macro_name(name);
         let wrap_type_macro_name = format_ident!("{wrap_type_macro}");
         let impl_base_name = base_name
-            .filter(|base| *base != BASE_REF_COUNTED)
+            .filter(|base| !self.is_ref_counted_name(base))
             .and_then(|base| self.cef_name_map.get(base))
             .map(|entry| {
                 let base = &entry.name;
@@ -2535,7 +2558,7 @@ fn make_my_struct() -> {rust_name} {{
             }
         });
 
-        let base_ident = format_ident!("{BASE_REF_COUNTED}");
+        let base_ident = format_ident!("{}", self.ref_counted_base_name());
 
         let wrapper = quote! {
             #[derive(Clone)]
@@ -3173,7 +3196,7 @@ fn make_my_struct() -> {rust_name} {{
 
             let name_ident = format_ident!("{name}");
             let root = self.root(name);
-            if root == BASE_REF_COUNTED {
+            if self.is_ref_counted_root(root) {
                 if s.is_sealed {
                     self.write_sealed_struct(f, s, root, &name_ident, &rust_name)
                 } else {
@@ -3597,6 +3620,11 @@ impl<'a> From<&'a syn::File> for ParseTree<'a> {
                 _ => None,
             })
             .collect();
+
+        tree.legacy_base_ref_counted = tree
+            .struct_declarations
+            .iter()
+            .any(|s| s.name == LEGACY_BASE_REF_COUNTED);
 
         tree.global_function_declarations = value
             .items

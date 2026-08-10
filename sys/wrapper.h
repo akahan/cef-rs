@@ -16,6 +16,17 @@
 
 #include "include/capi/cef_base_capi.h"
 
+// CEF 3.x uses cef_base_t for reference-counted objects and represents the
+// string collection handles as void pointers. Keep the names expected by the
+// safe bindings available when generating against that API.
+#if CEF_VERSION_MAJOR == 3
+typedef struct _cef_base_t _cef_base_ref_counted_t;
+typedef _cef_base_ref_counted_t cef_base_ref_counted_t;
+typedef void _cef_string_list_t;
+typedef void _cef_string_map_t;
+typedef void _cef_string_multimap_t;
+#endif
+
 #include "include/capi/cef_app_capi.h"
 #include "include/capi/cef_client_capi.h"
 #include "include/capi/cef_urlrequest_capi.h"

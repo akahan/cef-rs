@@ -55,6 +55,8 @@ fn bindgen(target: &str, cef_path: &Path) -> crate::Result<()> {
             non_exhaustive: true,
         })
         .allowlist_type("cef_.*")
+        .allowlist_type("_cef_base_ref_counted_t")
+        .allowlist_type("_cef_string_(list|map|multimap)_t")
         .allowlist_function("cef_.*")
         .allowlist_item("CEF_API_VERSION(_.+)?")
         .allowlist_item("CEF_VERSION(_.+)?")
